@@ -1,0 +1,7 @@
+"API_WellNo","CoName","Well_Nm","Well_Type","Wl_Status","County","Field","WH_TR","WH_Sec",
+"25005219040000","Norfolk Energy Inc.","BREWER 13-22","Gas","P&A - Approved","Blaine","Sherard, Area","26N-17E","22",
+
+"API_WellNo","RptDate","Formation","Lease_Unit","BBLS_OIL_COND","MCF_GAS","BBLS_WTR","DAYS_PROD",
+"25-005-21904-00-00","12/31/1987 12:00:00 AM","Eagle","-999","0","122","0","30",
+"25-005-21904-00-00","11/30/1987 12:00:00 AM","Eagle","-999","0","243","0","30",
+
