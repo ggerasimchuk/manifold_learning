@@ -1,0 +1,7 @@
+"API_WellNo","CoName","Well_Nm","Well_Type","Wl_Status","County","Field","WH_TR","WH_Sec",
+"25109210810000","Burlington Resources Oil & Gas Company LP","Canyon Confluence  23-1","Dry Hole","P&A - Approved","Wibaux","Wildcat Wibaux","17N-58E","1",
+
+"API_WellNo","RptDate","Formation","Lease_Unit","BBLS_OIL_COND","MCF_GAS","BBLS_WTR","DAYS_PROD",
+"25-109-21081-00-00","9/30/1996 12:00:00 AM","Red River","5151","0","0","0","0",
+"25-109-21081-00-00","8/31/1996 12:00:00 AM","Red River","5151","0","0","0","0",
+
