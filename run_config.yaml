@@ -1,0 +1,63 @@
+random_state: 42
+
+time:
+  freq: "MS"
+  horizon_months: 36
+  t0_rule: "oil_ge_threshold"
+  oil_threshold: 5.0
+
+preprocess:
+  log1p: true
+  winsorize_pct: 0.01
+  mask_shutin_le_zero: true
+  norm_method: "peak"           # peak | cum
+  exclude_from_norm: ["water_cut","gor"]
+
+features:
+  use_channels: ["oil", "water", "gas", "water_cut", "gor"]
+
+distance:
+  method: "softdtw"
+  gamma: 0.01
+  channels: ["oil","water_cut","gas"]      # каналы для метрики формы
+  channel_weights: [1.0, 0.7, 0.3]
+
+knn:
+  downsample_T: 12
+  knn_candidates: 50
+  k: 30
+  n_jobs: -1
+
+embedding:
+  method: "umap"
+  n_neighbors: 30
+  min_dist: 0.05
+  n_components: 2
+
+clustering:
+  min_cluster_size: 40
+  min_samples: 10
+  cluster_selection_epsilon: 0.0
+
+anomaly:
+  use_lof: true
+  n_neighbors: 50
+
+prototypes:
+  dba_channels: ["oil","water_cut","gas"]
+  dba_max_iter: 15
+
+changepoints:
+  model: "rbf"
+  pen: 8.0
+  min_size: 3
+  max_cp: 6
+
+evaluation:
+  trust_k: 15
+  bootstrap:
+    n_runs: 5             # для статьи поставьте 30
+    subsample_frac: 0.85
+
+io:
+  output_root: "./outputs"
