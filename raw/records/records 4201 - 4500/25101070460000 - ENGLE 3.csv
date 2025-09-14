@@ -1,0 +1,7 @@
+"API_WellNo","CoName","Well_Nm","Well_Type","Wl_Status","County","Field","WH_TR","WH_Sec",
+"25101070460000","Silver Fox Oil","ENGLE  3","Oil","P&A - Approved","Toole","Kevin-Sunburst","35N-3W","1",
+
+"API_WellNo","RptDate","Formation","Lease_Unit","BBLS_OIL_COND","MCF_GAS","BBLS_WTR","DAYS_PROD",
+"25-101-07046-00-00","8/31/1988 12:00:00 AM","Sunburst","3370","1","0","0","0",
+"25-101-07046-00-00","9/30/1987 12:00:00 AM","Sunburst","3370","2","0","0","0",
+
