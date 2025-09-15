@@ -1,0 +1,39 @@
+# Python-байткод
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Виртуальные окружения
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Логи и отладка
+*.log
+*.pot
+*.pyc
+
+# Кэш и временные файлы
+*.cache
+*.tmp
+*.swp
+.DS_Store
+
+# Пакеты и артефакты сборки
+data
+
+# Настройки IDE
+.vscode/
+.idea/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# Файлы данных, которые не нужны в репозитории
+*.csv
+*.tsv
+*.xls
+*.xlsx
+*.db
