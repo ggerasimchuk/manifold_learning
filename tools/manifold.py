@@ -117,7 +117,7 @@ def embed_umap_fastdtw(
     cfg: Optional[ManifoldConfig] = None,
     sample_size: Optional[int] = None,
     candidate_knn: Optional[int] = None,
-) -> Tuple[np.ndarray, List[str], np.ndarray, Dict[str, object]]:
+) -> Tuple[np.ndarray, List[int], np.ndarray, Dict[str, object]]:
     """UMAP с уточнением FastDTW для ближайших пар.
 
     Алгоритм:
@@ -128,7 +128,9 @@ def embed_umap_fastdtw(
 
     Если sample_size задан, берём случайную подвыборку для ускорения.
 
-    Возвращает: (Z, wells_sub, D, info)
+    Возвращает: (Z, sub_idx, D, info)
+        sub_idx — индексы элементов исходного массива ``X``,
+        попавшие в подвыборку (list[int]).
     """
     if cfg is None:
         cfg = ManifoldConfig()
