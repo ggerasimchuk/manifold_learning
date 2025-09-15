@@ -104,8 +104,8 @@ def compute_side_features(panel_long: pd.DataFrame, T: int = 36) -> pd.DataFrame
         # Время до 50% и 20% от пика (decline speed)
         half = 0.5 * peak if np.isfinite(peak) else np.nan
         fifth = 0.2 * peak if np.isfinite(peak) else np.nan
-        t_half = _first_index_where(oil, lambda y: np.isfinite(half) and (y <= half))
-        t_20 = _first_index_where(oil, lambda y: np.isfinite(fifth) and (y <= fifth))
+        t_half = _first_index_where(oil, lambda y: np.isfinite(half) & (y <= half))
+        t_20 = _first_index_where(oil, lambda y: np.isfinite(fifth) & (y <= fifth))
 
         # Усреднения по ранним/средним окнам
         m6 = int(min(6, len(oil)))
