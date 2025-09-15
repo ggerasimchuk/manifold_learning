@@ -36,7 +36,6 @@ except Exception:
 
 
 # sklearn
-from sklearn.preprocessing import RobustScaler
 from sklearn.neighbors import NearestNeighbors
 from sklearn.metrics import pairwise_distances
 
