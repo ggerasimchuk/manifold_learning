@@ -17,7 +17,8 @@
 
 ## Зависимости
 
-Основные пакеты: `numpy`, `pandas`, `scikit-learn`, `umap-learn`, `fastdtw`, `hdbscan`, `matplotlib`, `tqdm`. Дополнительно: `tslearn` (для барицентров), `jinja2` (HTML‑отчёт).
+Основные пакеты: `numpy`, `pandas`, `scikit-learn`, `umap-learn`, `fastdtw`, `hdbscan`, `matplotlib`, `tqdm`. 
+Дополнительно: `tslearn` (для барицентров), `jinja2` (HTML‑отчёт).
 
 Установить зависимости можно командой:
 
