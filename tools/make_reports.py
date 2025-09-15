@@ -36,6 +36,7 @@ import pandas as pd
 import matplotlib
 matplotlib.use("Agg")  # рендер без GUI
 import matplotlib.pyplot as plt
+from .matrix_utils import _collect_matrix
 
 try:
     from tqdm import tqdm
@@ -47,20 +48,6 @@ except Exception:
 
 def _ensure_dir(path: str) -> None:
     os.makedirs(path, exist_ok=True)
-
-
-def _collect_matrix(panel_long: pd.DataFrame, wells: Sequence[str], channel: str, T: int) -> np.ndarray:
-    rows = []
-    for w in wells:
-        g = panel_long.loc[panel_long["well_name"] == w, ["t", channel]].sort_values("t")
-        v = np.full(T, np.nan, float)
-        t = g["t"].to_numpy(int)
-        vals = g[channel].to_numpy(float)
-        t = t[(t >= 0) & (t < T)]
-        vals = vals[: len(t)]
-        v[t[: len(vals)]] = vals
-        rows.append(v)
-    return np.vstack(rows) if rows else np.empty((0, T))
 
 
 # ----------------------- КАРТА PBM ------------------------
