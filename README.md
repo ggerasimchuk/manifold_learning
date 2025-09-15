@@ -1,2 +1,87 @@
-# manifold_learning
-working on segmentation of well production profiles using manifold learning methods
+# Production Behavior Manifold
+
+Проект демонстрирует анализ профилей добычи скважин с помощью методов manifold learning и кластеризации. Вся цепочка обработки включает предобработку данных, построение низкоразмерной карты поведения, сегментацию, генерацию отчётов и прогноз профиля на основании первых месяцев работы.
+
+## Структура репозитория
+
+- **`tools/`** – модульные скрипты для всех этапов обработки:
+  - `preprocessing.py` – выравнивание и нормализация исходных данных;
+  - `feature.py` – расчёт компактных дескрипторов профиля;
+  - `manifold.py` – построение карты поведения (UMAP) по рядам и/или FastDTW;
+  - `clustering.py` – кластеризация HDBSCAN или GMM, поиск аномалий, прототипы;
+  - `make_reports.py` – визуализация карты, распределений и HTML‑отчётов;
+  - `forecast.py` – прогноз хвоста профиля по префиксу (KNN, ElasticNet).
+- **`utils/`** – вспомогательные скрипты для подготовки входных данных.
+- **`notebooks/`** и `manifold_learning_v3_with_forecast.ipynb` – демонстрационные ноутбуки с примером полного пайплайна.
+- **`reports/`** – каталог для сохраняемых артефактов и отчётов.
+
+## Зависимости
+
+Основные пакеты: `numpy`, `pandas`, `scikit-learn`, `umap-learn`, `fastdtw`, `hdbscan`, `matplotlib`, `tqdm`. Дополнительно: `tslearn` (для барицентров), `jinja2` (HTML‑отчёт).
+
+Установить зависимости можно командой:
+
+```bash
+pip install numpy pandas scikit-learn umap-learn fastdtw hdbscan matplotlib tqdm
+```
+
+## Шаг 1. Предобработка
+
+`tools/preprocessing.py` выполняет приведение суточных объёмов к месячным дебитам, робастную обработку выбросов и сглаживание Савицки–Голея. Профили выравниваются по моменту старта и ограничиваются заданным горизонтом `T`. Результат — long‑таблица и тензор `X` с каналами `r_oil_norm`, `wc`, `gor`, `dr_oil_norm`.
+
+## Шаг 2. Компактные признаки
+
+`compute_side_features` формирует дескрипторы динамики добычи: пиковый дебит и время его наступления, скорость падения до 50 % и 20 % пика, тренды по ранним окнам, статистики водоотдачи и газа, длину плато и долю валидных значений. `scale_features` выполняет робастное масштабирование признаков.
+
+## Шаг 3. Построение manifold
+
+В `manifold.py` реализованы два варианта UMAP:
+- `embed_umap_euclid` — быстрый базовый вариант по евклиду на выровненных рядах;
+- `embed_umap_fastdtw` — уточнённый вариант с перерасчётом ближайших пар через FastDTW, позволяющий учитывать несинхронность профилей.
+
+Результатом является низкоразмерная карта поведения `Z` и подмножество скважин, попавших в выборку.
+
+## Шаг 4. Кластеризация и аномалии
+
+`cluster_hdbscan` выполняет сегментацию на карте поведения методом HDBSCAN и возвращает метрики качества (Silhouette, DBCV). Альтернатива `cluster_gmm_bic` подбирает число компонент GMM по BIC. Функции `assign_anomaly_scores`, `lof_anomaly_scores` и `distance_to_medoid` позволяют оценить аномальность точек.
+
+`build_cluster_prototypes` формирует прототипы кластеров: медианные профили или (при наличии `tslearn`) барицентры soft‑DTW/DBA.
+
+## Шаг 5. Визуализация и отчёты
+
+Модуль `make_reports.py` сохраняет:
+- карту поведения (`save_pbm_map`),
+- распределение размеров кластеров (`save_cluster_distribution_plot`),
+- профили прототипов с IQR‑заштриховкой (`save_cluster_prototype_plots`),
+- CSV‑выгрузки и HTML‑отчёт (`export_csv_summaries`, `build_html_report`).
+
+## Шаг 6. Прогноз профиля
+
+`forecast.py` добавляет прогнозирование хвоста профиля (месяцы `T_pref`…`T`) по первым `T_pref` месяцам:
+- `build_prefix_scaled_channel` создаёт префикс‑нормированный канал без утечки информации;
+- `make_matrices` формирует матрицы признаков и целевой функции;
+- `knn_forecast` достраивает профиль по ближайшим соседям с амплитудным выравниванием;
+- `multioutput_forecast` обучает мультивыходную ElasticNet‑регрессию на компактных признаках;
+- `evaluate_forecasts` считает RMSE и sMAPE.
+
+## Работа с ноутбуком
+
+`manifold_learning_v3_with_forecast.ipynb` показывает пример полного процесса: от чтения CSV‑файлов до кластеризации и прогноза (шаги 1–6). Ноутбук также сохраняет метрики и отчёты в каталог `reports`.
+
+## Утилиты
+
+В `utils/` находятся вспомогательные скрипты:
+- `get_file_names_corrected.py` — переименование и очистка сырых CSV с данными скважин;
+- `pars.py` — парсер сайта DNRC DataMiner для массовой выгрузки данных по скважинам.
+
+## Как начать
+
+1. Подготовьте исходный DataFrame `df` с колонками `well_name`, `date`, `oil`, `water`, `gas`, `days_prod`.
+2. Выполните предобработку: `out = preprocess_profiles(df, PreprocConfig(T=100))`.
+3. Постройте признаки и manifold: `feats = compute_side_features(out["panel_long"], T=100)` и `Z, umap_model = embed_umap_fastdtw(out["X"], out["tensor_channels"], ("r_oil_norm", "wc"))`.
+4. Проведите кластеризацию и анализ аномалий: `res = cluster_hdbscan(Z, wells_sub)` и `df_map = assign_anomaly_scores(res["df_map"], Z, res["labels"])`.
+5. Сохраните отчёты: `save_pbm_map(Z, df_map, "reports")` и `build_html_report(...)`.
+6. Для прогноза подготовьте префикс: `pl = build_prefix_scaled_channel(out["panel_long"], out["wells_used"], T, T_pref)` и затем используйте `knn_forecast` или `multioutput_forecast`.
+
+Подробный пример кода доступен в ноутбуке.
+
