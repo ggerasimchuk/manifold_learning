@@ -1,8 +1,0 @@
-"API_WellNo","CoName","Well_Nm","Well_Type","Wl_Status","County","Field","WH_TR","WH_Sec",
-"25003050050000","Bearcat Petroleum, Inc.","Crow Tribal  8","Injection, EOR","P&A - Approved","Big Horn","Ash Creek","10S-38E","3",
-
-"API_WellNo","RptDate","Formation","Lease_Unit","BBLS_OIL_COND","MCF_GAS","BBLS_WTR","DAYS_PROD",
-"25-003-05005-00-00","4/30/1991 12:00:00 AM","Shannon","4625","0","0","0","0",
-"25-003-05005-00-00","3/31/1991 12:00:00 AM","Shannon","4625","0","0","0","0",
-"25-003-05005-00-00","2/28/1991 12:00:00 AM","Shannon","4625","0","0","0","0",
-

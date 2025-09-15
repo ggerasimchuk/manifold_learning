@@ -1,7 +1,0 @@
-"API_WellNo","CoName","Well_Nm","Well_Type","Wl_Status","County","Field","WH_TR","WH_Sec",
-"25085210390000","Gary, Samuel,Jr.& Associates, Inc.","BAINVILLE 27-13","Oil","P&A - Approved","Roosevelt","Bainville","28N-58E","27",
-
-"API_WellNo","RptDate","Formation","Lease_Unit","BBLS_OIL_COND","MCF_GAS","BBLS_WTR","DAYS_PROD",
-"25-085-21039-00-00","2/28/1986 12:00:00 AM","Interlake","3399","16","57","1070","10",
-"25-085-21039-00-00","1/31/1986 12:00:00 AM","Interlake","3399","252","166","3248","29",
-

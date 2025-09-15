@@ -1,8 +1,0 @@
-"API_WellNo","CoName","Well_Nm","Well_Type","Wl_Status","County","Field","WH_TR","WH_Sec",
-"25101241980000","Somont Oil Company, Inc.","Breaupre  2","Dry Hole","P&A - Approved","Toole","Kevin-Sunburst","35N-2W","8",
-
-"API_WellNo","RptDate","Formation","Lease_Unit","BBLS_OIL_COND","MCF_GAS","BBLS_WTR","DAYS_PROD",
-"25-101-24198-00-00","7/31/2012 12:00:00 AM","Madison","3631","0","0","0","0",
-"25-101-24198-00-00","6/30/2012 12:00:00 AM","Madison","3631","0","0","0","0",
-"25-101-24198-00-00","5/31/2012 12:00:00 AM","Madison","3631","0","0","0","0",
-
