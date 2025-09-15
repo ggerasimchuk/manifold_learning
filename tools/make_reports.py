@@ -73,6 +73,7 @@ def save_pbm_map(
     annotate_medoids: bool = True,
     mark_anomalies: bool = True,
     anomaly_col: str = "anomaly_score",
+    color_clusters: bool = True,
     dpi: int = 160,
 ) -> str:
     """Сохраняет PNG с картой PBM (scatter), один график — одна фигура.
@@ -82,7 +83,13 @@ def save_pbm_map(
     fig, ax = plt.subplots(figsize=(8, 6))
     ax.set_title(title)
     # точки
-    sc = ax.scatter(Z[:, 0], Z[:, 1], s=12)
+    colors = None
+    if color_clusters and "cluster" in df_map.columns:
+        try:
+            colors = df_map["cluster"].to_numpy()
+        except Exception:
+            colors = None
+    sc = ax.scatter(Z[:, 0], Z[:, 1], s=12, c=colors)
     ax.set_xlabel("UMAP-1")
     ax.set_ylabel("UMAP-2")
 
@@ -243,3 +250,4 @@ def build_html_report(
     with open(out_path, "w", encoding="utf-8") as f:
         f.write("\n".join(html))
     return out_path
+
