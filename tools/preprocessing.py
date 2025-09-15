@@ -199,9 +199,17 @@ def preprocess_profiles(
 
     # Среднесуточные дебиты за месяц (взвешенное по дням)
     eps = cfg.eps
-    grp["r_oil"] = grp.apply(lambda r: _weighted_rate(r["oil_sum"], r["days_eff"], eps), axis=1)
-    grp["r_water"] = grp.apply(lambda r: _weighted_rate(r["water_sum"], r["days_eff"], eps), axis=1)
-    grp["r_gas"] = grp.apply(lambda r: _weighted_rate(r["gas_sum"], r["days_eff"], eps), axis=1)
+    days_eff = grp["days_eff"].to_numpy(dtype=float)
+    valid = np.isfinite(days_eff) & (days_eff > 0)
+    denom = days_eff + eps
+
+    oil_sum = grp["oil_sum"].to_numpy(dtype=float)
+    water_sum = grp["water_sum"].to_numpy(dtype=float)
+    gas_sum = grp["gas_sum"].to_numpy(dtype=float)
+
+    grp["r_oil"] = np.divide(oil_sum, denom, out=np.full_like(days_eff, np.nan), where=valid)
+    grp["r_water"] = np.divide(water_sum, denom, out=np.full_like(days_eff, np.nan), where=valid)
+    grp["r_gas"] = np.divide(gas_sum, denom, out=np.full_like(days_eff, np.nan), where=valid)
 
     # Сортировка
     grp = grp.sort_values(["well_name", "month"]).reset_index(drop=True)
