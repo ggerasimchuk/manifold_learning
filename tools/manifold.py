@@ -163,7 +163,7 @@ def embed_umap_fastdtw(
         k = cfg.k_refine if candidate_knn is None else candidate_knn
         nn = NearestNeighbors(n_neighbors=min(k+1, Ns), metric="euclidean")
         nn.fit(Xflat)
-        dists, inds = nn.kneighbors(Xflat, return_distance=True)
+        inds = nn.kneighbors(Xflat, return_distance=False)
         # inds[:,0] — сама точка; начнём с 1..
         pairs = set()
         for i in range(Ns):
