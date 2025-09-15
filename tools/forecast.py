@@ -171,7 +171,6 @@ def multioutput_forecast(panel_long: pd.DataFrame, wells:list, T:int, T_pref:int
 
 def evaluate_forecasts(Y_true, Y_pred):
     """RMSE и sMAPE по строкам, где и факт, и прогноз без NaN; без зависимости от 'squared'."""
-    import numpy as np
     mask = np.isfinite(Y_pred).all(axis=1) & np.isfinite(Y_true).all(axis=1)
     n_eval = int(mask.sum())
     if n_eval == 0:
