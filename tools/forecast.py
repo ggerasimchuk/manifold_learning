@@ -10,14 +10,18 @@ Assumptions:
 This module provides:
 - build_prefix_scaled_channel(): scale r_oil_s by prefix-quantile for leakage-free comparison
 - make_matrices(): construct prefix matrix X_pref and full target matrix Y_full
+- vote_cluster_by_prefix(): assign clusters to prefix-only wells via neighbor voting
 - knn_forecast(): neighbor-based completion with per-neighbor amplitude alignment
 - multioutput_forecast(): elastic-net multi-output baseline on compact prefix features
 - evaluate_forecasts(): RMSE and sMAPE metrics
 """
 
+from collections import Counter
+
 import numpy as np
 import pandas as pd
-from typing import Tuple, Dict, Optional
+from sklearn.neighbors import NearestNeighbors
+from typing import Dict, Optional, Sequence, Tuple
 
 def build_prefix_scaled_channel(panel_long: pd.DataFrame, wells: list, T:int, T_pref:int,
                                 q:float=0.90, eps:float=1e-9, clip_max:float=3.0,
@@ -72,44 +76,282 @@ def _align_scale(y_ref_pref: np.ndarray, y_nei_pref: np.ndarray, eps:float=1e-9)
         s = 1.0
     return float(s)
 
-def knn_forecast(X_pref: np.ndarray, Y_full: np.ndarray, T_pref:int, K:int=15) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
-    """KNN completion with per-neighbor amplitude alignment on prefix. Returns pred_suffix [N, T-T_pref]."""
-    from sklearn.neighbors import NearestNeighbors
+def vote_cluster_by_prefix(
+    X_pref: np.ndarray,
+    wells: Sequence[str],
+    df_map: pd.DataFrame,
+    target_indices: Optional[Sequence[int]] = None,
+    K_vote: int = 7,
+    allow_noise: bool = True,
+    cluster_col: str = "cluster",
+) -> Tuple[pd.DataFrame, Dict[int, Dict[str, object]]]:
+    """Assign clusters to wells using prefix-space kNN voting.
+
+    Parameters
+    ----------
+    X_pref : np.ndarray
+        Prefix matrix of shape [N, T_pref].
+    wells : sequence of str
+        Well names aligned with rows of ``X_pref``.
+    df_map : pd.DataFrame
+        Output of ``cluster_hdbscan``/``cluster_gmm_bic`` with columns
+        ``well_name`` and ``cluster`` at minimum.
+    target_indices : sequence of int, optional
+        Indices of wells (rows in ``X_pref``/``wells``) that require cluster
+        assignment. If ``None``, all wells absent in ``df_map`` are used.
+    K_vote : int, default 7
+        Number of nearest neighbours (in prefix space) to use for majority vote.
+    allow_noise : bool, default True
+        Whether to keep cluster ``-1`` (HDBSCAN noise) in the vote. If False and
+        all neighbours are noise, the function falls back to using them anyway.
+    cluster_col : str, default ``"cluster"``
+        Column in ``df_map`` containing cluster labels.
+
+    Returns
+    -------
+    assignments : pd.DataFrame
+        Columns ``well_name``, ``cluster_vote``, ``vote_conf`` and
+        ``n_neighbors``.
+    details : dict
+        Mapping ``row_index -> {neighbor_indices, neighbor_wells,``
+        ``neighbor_clusters, neighbor_distances}`` to aid debugging.
+    """
+
+    if cluster_col not in df_map.columns:
+        raise ValueError(f"DataFrame df_map must contain column '{cluster_col}'")
+
+    cluster_map = df_map.set_index("well_name")[cluster_col].to_dict()
+    all_indices = list(range(len(wells)))
+    if target_indices is None:
+        target_indices = [i for i in all_indices if wells[i] not in cluster_map]
+    else:
+        target_indices = [int(i) for i in target_indices]
+
+    if not target_indices:
+        return pd.DataFrame(columns=["well_name", "cluster_vote", "vote_conf", "n_neighbors"]), {}
+
+    candidates = [i for i in all_indices if wells[i] in cluster_map]
+    if not candidates:
+        raise ValueError("No wells with known clusters available for voting.")
+
+    K_eff = max(1, min(int(K_vote), len(candidates)))
+    nbrs = NearestNeighbors(metric="euclidean")
+    nbrs.fit(X_pref[candidates])
+
+    rows = []
+    details: Dict[int, Dict[str, object]] = {}
+    for idx in target_indices:
+        sample = X_pref[idx].reshape(1, -1)
+        dists, inds = nbrs.kneighbors(sample, n_neighbors=K_eff, return_distance=True)
+        local_inds = inds[0]
+        neigh_global = np.array([candidates[j] for j in local_inds], dtype=int)
+        neigh_clusters = np.array([cluster_map.get(wells[g], np.nan) for g in neigh_global], dtype=float)
+        neigh_dist = dists[0].astype(float)
+
+        valid_mask = ~np.isnan(neigh_clusters)
+        if not valid_mask.any():
+            votes_idx = neigh_global[:0]
+            votes_clusters = neigh_clusters[:0]
+            votes_dist = neigh_dist[:0]
+        else:
+            neigh_global = neigh_global[valid_mask]
+            neigh_clusters = neigh_clusters[valid_mask]
+            neigh_dist = neigh_dist[valid_mask]
+            if not allow_noise:
+                non_noise = neigh_clusters != -1
+                if non_noise.any():
+                    neigh_global = neigh_global[non_noise]
+                    neigh_clusters = neigh_clusters[non_noise]
+                    neigh_dist = neigh_dist[non_noise]
+            votes_idx = neigh_global[:K_eff]
+            votes_clusters = neigh_clusters[:K_eff]
+            votes_dist = neigh_dist[:K_eff]
+
+        if votes_clusters.size:
+            counts = Counter(int(c) for c in votes_clusters)
+            best_cluster = None
+            best_count = -1
+            for cl, cnt in counts.items():
+                if cnt > best_count or (cnt == best_count and (best_cluster is None or cl < best_cluster)):
+                    best_cluster = cl
+                    best_count = cnt
+            total_votes = sum(counts.values())
+            vote_conf = float(best_count / total_votes) if total_votes else 0.0
+            cluster_vote = float(best_cluster) if best_cluster is not None else np.nan
+        else:
+            cluster_vote = np.nan
+            vote_conf = 0.0
+
+        rows.append({
+            "well_name": wells[idx],
+            "cluster_vote": cluster_vote,
+            "vote_conf": vote_conf,
+            "n_neighbors": int(votes_clusters.size),
+        })
+        details[int(idx)] = {
+            "neighbor_indices": votes_idx.tolist(),
+            "neighbor_wells": [wells[i] for i in votes_idx],
+            "neighbor_clusters": votes_clusters.astype(float).tolist(),
+            "neighbor_distances": votes_dist.tolist(),
+        }
+
+    assignments = pd.DataFrame(rows)
+    return assignments, details
+
+def knn_forecast(
+    X_pref: np.ndarray,
+    Y_full: np.ndarray,
+    T_pref: int,
+    K: int = 15,
+    target_indices: Optional[Sequence[int]] = None,
+    candidate_pools: Optional[Dict[int, Sequence[int]]] = None,
+) -> Tuple[np.ndarray, Dict[str, object]]:
+    """KNN completion with per-neighbour amplitude alignment on prefix.
+
+    Parameters
+    ----------
+    X_pref : np.ndarray
+        Prefix matrix of shape [N, T_pref].
+    Y_full : np.ndarray
+        Full target matrix [N, T]. Rows may contain NaNs beyond the observed
+        prefix (e.g. for forecast wells).
+    T_pref : int
+        Length of the prefix window.
+    K : int, default 15
+        Number of neighbours used for suffix aggregation (median).
+    target_indices : sequence of int, optional
+        Rows to forecast. Default: wells with full horizon (mask_full).
+    candidate_pools : dict, optional
+        Mapping ``target_index -> iterable of candidate neighbour indices``. If
+        not provided the full training set is used for every target.
+
+    Returns
+    -------
+    Y_pred : np.ndarray
+        Array [N, T-T_pref] with NaNs for rows that were not predicted.
+    info : dict
+        Contains ``train_indices``, ``target_indices`` and ``neighbors``.
+    """
+
     N, T_pref_ = X_pref.shape
-    assert T_pref_ == T_pref
-    # Use only wells with complete full horizon for training & evaluation
-    mask_full = np.isfinite(Y_full).sum(axis=1) >= Y_full.shape[1]
-    I = np.where(mask_full)[0]
-    if len(I) < 3:
+    if T_pref_ != T_pref:
+        raise ValueError("T_pref does not match X_pref shape")
+
+    T_total = Y_full.shape[1]
+    T_suffix = T_total - T_pref
+
+    mask_full = np.isfinite(Y_full).sum(axis=1) >= T_total
+    train_idx = np.where(mask_full)[0]
+    if len(train_idx) < 1:
         raise ValueError("Not enough wells with full horizon for KNN.")
-    nbrs = NearestNeighbors(n_neighbors=min(K+1, len(I)), metric="euclidean").fit(X_pref[I])
-    dists, knn_idx = nbrs.kneighbors(X_pref[I])
-    T_suffix = Y_full.shape[1] - T_pref
-    pred = np.zeros((len(I), T_suffix))
-    used = []
-    for r, (row_knn, row_d) in enumerate(zip(knn_idx, dists)):
-        # exclude self (distance ~ 0)
-        neigh = [j for j,d in zip(row_knn, row_d) if d>0][:K]
-        if not neigh:
-            # fallback: take the single closest even if self
-            neigh = [row_knn[0]]
-        # gather neighbors (global indices)
-        neigh_g = I[neigh]
-        # align each neighbor by LS scale over prefix (on raw target y since it's in original units)
-        y_ref_pref = Y_full[I[r], :T_pref]
+
+    if target_indices is None:
+        target_indices = train_idx.tolist()
+    else:
+        target_indices = [int(i) for i in target_indices]
+
+    Ypred_fullN = np.full((N, T_suffix), np.nan)
+    neighbors_info: Dict[int, Dict[str, np.ndarray]] = {}
+
+    base_nbrs: Optional[NearestNeighbors] = None
+    train_idx_sorted = np.array(train_idx, dtype=int)
+    base_nbrs = NearestNeighbors(metric="euclidean")
+    base_nbrs.fit(X_pref[train_idx_sorted])
+
+    train_set = set(train_idx_sorted.tolist())
+
+    for idx in target_indices:
+        if idx < 0 or idx >= N:
+            continue
+
+        pool = train_idx_sorted
+        use_base = True
+        if candidate_pools is not None and idx in candidate_pools:
+            pool_candidates = sorted(set(int(p) for p in candidate_pools[idx]))
+            pool_filtered = [p for p in pool_candidates if p in train_set]
+            if pool_filtered:
+                pool = np.array(pool_filtered, dtype=int)
+                use_base = np.array_equal(pool, train_idx_sorted)
+            else:
+                pool = train_idx_sorted
+                use_base = True
+        else:
+            pool = train_idx_sorted
+            use_base = True
+
+        if pool.size == 0:
+            continue
+
+        n_neighbors = min(max(K + 1, 1), pool.size)
+        sample = X_pref[idx].reshape(1, -1)
+        if use_base:
+            base_dists, base_inds = base_nbrs.kneighbors(sample, n_neighbors=n_neighbors, return_distance=True)
+            neigh_global = train_idx_sorted[base_inds[0]]
+            dist_vals = base_dists[0]
+            source_pool = train_idx_sorted
+            source_inds = base_inds
+            source_dists = base_dists
+        else:
+            local_nbrs = NearestNeighbors(metric="euclidean")
+            local_nbrs.fit(X_pref[pool])
+            local_dists, local_inds = local_nbrs.kneighbors(sample, n_neighbors=n_neighbors, return_distance=True)
+            neigh_global = pool[local_inds[0]]
+            dist_vals = local_dists[0]
+            source_pool = pool
+            source_inds = local_inds
+            source_dists = local_dists
+
+        mask_self = neigh_global != idx
+        neigh_global = neigh_global[mask_self]
+        dist_vals = dist_vals[mask_self]
+
+        if neigh_global.size == 0 and not use_base:
+            # fallback to global neighbour set (without cluster restriction)
+            base_dists, base_inds = base_nbrs.kneighbors(sample, n_neighbors=n_neighbors, return_distance=True)
+            neigh_global = train_idx_sorted[base_inds[0]]
+            dist_vals = base_dists[0]
+            source_pool = train_idx_sorted
+            source_inds = base_inds
+            source_dists = base_dists
+            mask_self = neigh_global != idx
+            neigh_global = neigh_global[mask_self]
+            dist_vals = dist_vals[mask_self]
+
+        if neigh_global.size == 0:
+            neigh_global = source_pool[source_inds[0][:1]]
+            dist_vals = source_dists[0][:1]
+
+        neigh_global = neigh_global[:K]
+        dist_vals = dist_vals[:K]
+        if neigh_global.size == 0:
+            continue
+
+        y_ref_pref = Y_full[idx, :T_pref]
+        if not np.isfinite(y_ref_pref).any():
+            continue
+
         suffixes = []
-        for g in neigh_g:
+        for g in neigh_global:
             y_nei_pref = Y_full[g, :T_pref]
             s = _align_scale(y_ref_pref, y_nei_pref)
-            y_nei_suffix = s * Y_full[g, T_pref:]
-            suffixes.append(y_nei_suffix)
+            suffixes.append(s * Y_full[g, T_pref:])
+
+        if not suffixes:
+            continue
+
         suffixes = np.vstack(suffixes)
-        pred[r] = np.nanmedian(suffixes, axis=0)
-        used.append(neigh_g)
-    # Build a full-N predictions array filled with nan, then place known rows
-    Ypred_fullN = np.full((N, T_suffix), np.nan)
-    Ypred_fullN[I] = pred
-    return Ypred_fullN, {"train_indices": I, "neighbors": used}
+        Ypred_fullN[idx] = np.nanmedian(suffixes, axis=0)
+        neighbors_info[int(idx)] = {
+            "neighbors": neigh_global.astype(int),
+            "distances": dist_vals.astype(float),
+        }
+
+    info = {
+        "train_indices": train_idx_sorted,
+        "target_indices": np.array(target_indices, dtype=int),
+        "neighbors": neighbors_info,
+    }
+    return Ypred_fullN, info
 
 def _fallback_prefix_features(panel_long: pd.DataFrame, wells:list, T_pref:int) -> pd.DataFrame:
     """Compact features from prefix window: mean, std, slope, curvature, wc stats."""
