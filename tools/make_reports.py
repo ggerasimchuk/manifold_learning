@@ -43,24 +43,11 @@ try:
 except Exception:
     _TQDM = False
 
+from tools.common import collect_time_series, compute_cluster_medoids
 # ------------------------- УТИЛИТЫ -------------------------
 
 def _ensure_dir(path: str) -> None:
     os.makedirs(path, exist_ok=True)
-
-
-def _collect_matrix(panel_long: pd.DataFrame, wells: Sequence[str], channel: str, T: int) -> np.ndarray:
-    rows = []
-    for w in wells:
-        g = panel_long.loc[panel_long["well_name"] == w, ["t", channel]].sort_values("t")
-        v = np.full(T, np.nan, float)
-        t = g["t"].to_numpy(int)
-        vals = g[channel].to_numpy(float)
-        t = t[(t >= 0) & (t < T)]
-        vals = vals[: len(t)]
-        v[t[: len(vals)]] = vals
-        rows.append(v)
-    return np.vstack(rows) if rows else np.empty((0, T))
 
 
 # ----------------------- КАРТА PBM ------------------------
@@ -95,12 +82,9 @@ def save_pbm_map(
 
     # Медоиды кластеров (на координатах Z)
     if annotate_medoids and "cluster" in df_map.columns:
-        from sklearn.metrics import pairwise_distances
-        for cl, g in df_map[df_map["cluster"] >= 0].groupby("cluster"):
-            idx = g.index.to_numpy()
-            D = pairwise_distances(Z[idx], metric="euclidean")
-            m_local = int(idx[np.argmin(D.sum(axis=0))])
-            ax.text(Z[m_local, 0], Z[m_local, 1], f"C{int(cl)}", fontsize=9)
+        medoids = compute_cluster_medoids(Z, df_map["cluster"].to_numpy())
+        for cl, idx in medoids.items():
+            ax.text(Z[idx, 0], Z[idx, 1], f"C{int(cl)}", fontsize=9)
 
     # Аномалии (обводка поверх, если есть колонка)
     if mark_anomalies and anomaly_col in df_map.columns:
@@ -161,7 +145,7 @@ def save_cluster_prototype_plots(
             if proto is None:
                 continue
             # Матрица ряда для IQR
-            M = _collect_matrix(panel_long, wells, ch, T)
+            M = collect_time_series(panel_long, wells, ch, T)
             p25 = np.nanpercentile(M, 25, axis=0) if M.size else None
             p75 = np.nanpercentile(M, 75, axis=0) if M.size else None
             x = np.arange(len(proto))

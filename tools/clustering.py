@@ -34,9 +34,10 @@ import numpy as np
 import pandas as pd
 
 from sklearn.neighbors import LocalOutlierFactor
-from sklearn.metrics import silhouette_score, pairwise_distances
+from sklearn.metrics import silhouette_score
 from sklearn.mixture import GaussianMixture
 
+from tools.common import collect_time_series, compute_cluster_medoids
 # --- HDBSCAN ---
 try:
     import hdbscan
@@ -193,26 +194,17 @@ def distance_to_medoid(Z: np.ndarray, labels: np.ndarray) -> np.ndarray:
     """Расстояние точки до медоида своего кластера в координатах embedding.
     Для шума (-1) — расстояние до ближайшего кластера.
     """
-    uniq = [c for c in np.unique(labels) if c >= 0]
-    if not len(uniq):
+    medoid_idx = compute_cluster_medoids(Z, labels)
+    if not medoid_idx:
         return np.full(len(labels), np.nan)
-    medoids = {}
-    for c in uniq:
-        idx = np.where(labels == c)[0]
-        if idx.size == 0:
-            continue
-        D = pairwise_distances(Z[idx], metric="euclidean")
-        m = idx[np.argmin(D.sum(axis=0))]
-        medoids[c] = Z[m]
+    medoids = {cl: Z[idx] for cl, idx in medoid_idx.items()}
     out = np.zeros(len(labels))
     for i, lab in enumerate(labels):
-        if lab >= 0:
-            mu = medoids.get(lab)
-            out[i] = float(np.linalg.norm(Z[i] - mu))
+        if lab >= 0 and lab in medoids:
+            out[i] = float(np.linalg.norm(Z[i] - medoids[lab]))
         else:
             # для шума — ближайший медоид
-            dmin = np.min([np.linalg.norm(Z[i] - mu) for mu in medoids.values()])
-            out[i] = float(dmin)
+            out[i] = float(min(np.linalg.norm(Z[i] - mu) for mu in medoids.values()))
     # нормализация [0..1]
     out = (out - np.min(out)) / (np.ptp(out) + 1e-12)
     return out
@@ -221,22 +213,6 @@ def distance_to_medoid(Z: np.ndarray, labels: np.ndarray) -> np.ndarray:
 # ======================================================
 # --------------- ПРОТОТИПЫ КЛАСТЕРОВ ------------------
 # ======================================================
-
-def _collect_matrix(panel_long: pd.DataFrame, wells: Sequence[str], channel: str, T: int) -> np.ndarray:
-    """Собирает матрицу [n_series, T] по указанному каналу с NaN.
-    """
-    rows = []
-    for w in wells:
-        g = panel_long.loc[panel_long["well_name"] == w, ["t", channel]].sort_values("t")
-        v = np.full(T, np.nan, float)
-        t = g["t"].to_numpy(int)
-        vals = g[channel].to_numpy(float)
-        t = t[(t >= 0) & (t < T)]
-        vals = vals[: len(t)]
-        v[t[: len(vals)]] = vals
-        rows.append(v)
-    return np.vstack(rows) if rows else np.empty((0, T))
-
 
 def _barycenter_or_median(M: np.ndarray, method: str = "auto", gamma: float = 1.0, max_iter: int = 50) -> np.ndarray:
     """Возвращает барицентр (soft-DTW/DBA) или медиану по времени, если tslearn недоступен.
@@ -289,7 +265,7 @@ def build_cluster_prototypes(
     for cl, wells in cl2wells.items():
         res[cl] = {}
         for ch in channels:
-            M = _collect_matrix(panel_long, wells, ch, T)
+            M = collect_time_series(panel_long, wells, ch, T)
             proto = _barycenter_or_median(M, method=method, gamma=gamma, max_iter=max_iter)
             res[cl][ch] = proto
     return res
@@ -326,3 +302,4 @@ def assign_anomaly_scores(df_map: pd.DataFrame, Z: np.ndarray, labels: np.ndarra
     out["dist_medoid"] = dmed
     out["anomaly_score"] = anom
     return out
+

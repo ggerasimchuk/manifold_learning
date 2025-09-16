@@ -158,13 +158,30 @@ def compute_side_features(panel_long: pd.DataFrame, T: int = 36) -> pd.DataFrame
     return feats_df
 
 
-def scale_features(feats_df: pd.DataFrame, exclude: Sequence[str] = ("well_name",)) -> Tuple[pd.DataFrame, RobustScaler]:
+def scale_features(
+    feats_df: pd.DataFrame,
+    exclude: Sequence[str] = ("well_name",),
+) -> Tuple[pd.DataFrame, RobustScaler]:
+    """Scale numeric columns with :class:`~sklearn.preprocessing.RobustScaler`.
+
+    Parameters
+    ----------
+    feats_df:
+        Input dataframe produced by :func:`compute_side_features`.
+    exclude:
+        Columns that should be left untouched (typically identifiers).
+
+    Returns
+    -------
+    Tuple[pd.DataFrame, RobustScaler]
+        A copy of ``feats_df`` with scaled columns and the fitted scaler instance.
+    """
     if feats_df.empty:
-        return feats_df, RobustScaler()
+        return feats_df.copy(), RobustScaler()
+
     cols = [c for c in feats_df.columns if c not in exclude]
     scaler = RobustScaler()
-    X = scaler.fit_transform(feats_df[cols].astype(float).values)
+    scaled_values = scaler.fit_transform(feats_df[cols].astype(float))
     feats_scaled = feats_df.copy()
-    for i, c in enumerate(cols):
-        feats_scaled[c] = X[:, i]
+    feats_scaled.loc[:, cols] = scaled_values
     return feats_scaled, scaler
