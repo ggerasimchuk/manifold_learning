@@ -50,6 +50,59 @@ def _ensure_dir(path: str) -> None:
     os.makedirs(path, exist_ok=True)
 
 
+def save_benchmark_plot(results_df: pd.DataFrame, out_dir: str, dpi: int = 160) -> str:
+    """Строит и сохраняет графики RMSE и sMAPE от длины префикса."""
+
+    if results_df.empty:
+        raise ValueError("results_df пуст — нечего визуализировать")
+
+    _ensure_dir(out_dir)
+    agg = (
+        results_df.groupby(["n", "method"], as_index=False)
+        .agg({"rmse": "mean", "smape": "mean"})
+        .sort_values("n")
+    )
+
+    methods = ["baseline"]
+    methods += [m for m in agg["method"].unique() if m != "baseline"]
+
+    # RMSE plot
+    fig_rmse, ax_rmse = plt.subplots(figsize=(8, 5))
+    for method in methods:
+        data = agg[agg["method"] == method]
+        if data.empty:
+            continue
+        label = "baseline" if method == "baseline" else "cluster-aware"
+        ax_rmse.plot(data["n"], data["rmse"], marker="o", label=label)
+    ax_rmse.set_title("RMSE vs prefix length")
+    ax_rmse.set_xlabel("n (months)")
+    ax_rmse.set_ylabel("RMSE")
+    ax_rmse.legend()
+    fig_rmse.tight_layout()
+    path_rmse = os.path.join(out_dir, "benchmark_rmse.png")
+    fig_rmse.savefig(path_rmse, dpi=dpi)
+    plt.close(fig_rmse)
+
+    # sMAPE plot
+    fig_smape, ax_smape = plt.subplots(figsize=(8, 5))
+    for method in methods:
+        data = agg[agg["method"] == method]
+        if data.empty:
+            continue
+        label = "baseline" if method == "baseline" else "cluster-aware"
+        ax_smape.plot(data["n"], data["smape"], marker="o", label=label)
+    ax_smape.set_title("sMAPE vs prefix length")
+    ax_smape.set_xlabel("n (months)")
+    ax_smape.set_ylabel("sMAPE")
+    ax_smape.legend()
+    fig_smape.tight_layout()
+    path_smape = os.path.join(out_dir, "benchmark_smape.png")
+    fig_smape.savefig(path_smape, dpi=dpi)
+    plt.close(fig_smape)
+
+    return out_dir
+
+
 # ----------------------- КАРТА PBM ------------------------
 
 def save_pbm_map(
