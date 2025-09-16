@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import math
 import warnings
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, asdict
 from typing import Dict, List, Optional, Tuple
 
@@ -136,10 +137,43 @@ def _weighted_rate(sum_volume: float, sum_days: float, eps: float) -> float:
 # Основная функция предобработки
 # ----------------------------------
 
+@dataclass(slots=True)
+class PreprocessOutput(Mapping[str, object]):
+    panel_long: pd.DataFrame
+    X: np.ndarray
+    wells_used: List[str]
+    dropped_summary: pd.DataFrame
+    config: Dict[str, object]
+    tensor_channels: List[str]
+
+    _KEYS: Tuple[str, ...] = (
+        "panel_long",
+        "X",
+        "wells_used",
+        "dropped_summary",
+        "config",
+        "tensor_channels",
+    )
+
+    def __getitem__(self, key: str) -> object:
+        if key not in self._KEYS:
+            raise KeyError(key)
+        return getattr(self, key)
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._KEYS)
+
+    def __len__(self) -> int:
+        return len(self._KEYS)
+
+    def as_dict(self) -> Dict[str, object]:
+        return {key: getattr(self, key) for key in self._KEYS}
+
+
 def preprocess_profiles(
     df: pd.DataFrame,
     cfg: Optional[PreprocConfig] = None,
-) -> Dict[str, object]:
+) -> PreprocessOutput:
     """
     Предобработка «сырых» данных до панели, выровненной по t=0 и ограниченной горизонтом T.
     Возвращает:
@@ -322,16 +356,16 @@ def preprocess_profiles(
     else:
         dropped_summary = pd.DataFrame(columns=["reason", "count"])
 
-    result = {
-        "panel_long": panel_long,
-        "X": X,
-        "wells_used": wells_used,
-        "dropped_summary": dropped_summary,
-        "config": asdict(cfg),
-        "tensor_channels": list(cfg.tensor_channels),
-    }
+    result = PreprocessOutput(
+        panel_long=panel_long,
+        X=X,
+        wells_used=wells_used,
+        dropped_summary=dropped_summary,
+        config=asdict(cfg),
+        tensor_channels=list(cfg.tensor_channels),
+    )
     print("Preprocess complete.")
-    print(f"  В итог попало скважин: {len(result['wells_used'])}")
+    print(f"  В итог попало скважин: {len(result.wells_used)}")
     if len(dropped_summary):
         print("  Отброшено (по причинам):")
         display(dropped_summary)
