@@ -23,6 +23,8 @@ ENV/
 
 # Пакеты и артефакты сборки
 data
+reports
+experiments
 
 # Настройки IDE
 .vscode/
@@ -37,3 +39,5 @@ data
 *.xls
 *.xlsx
 *.db
+*.png
+*.html
