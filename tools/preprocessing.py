@@ -346,26 +346,3 @@ def preprocess_profiles(
     else:
         print("  Отброшенных скважин нет.")
     return result
-
-
-# # ----------------------------
-# # Пример использования
-# # ----------------------------
-# if 'df' in globals():
-#     print("Обнаружен df в окружении. Запускаю предобработку с дефолтным конфигом...")
-#     cfg = PreprocConfig()
-#     out = preprocess_profiles(df, cfg)
-#     # Покажем заголовок long-таблицы как предварительный просмотр
-#     head_preview = out["panel_long"].head(12).copy()
-#     try:
-#         # Если доступна вспомогательная функция отображения таблиц — используем её
-#         import caas_jupyter_tools
-#         caas_jupyter_tools.display_dataframe_to_user("Предпросмотр panel_long", head_preview)
-#     except Exception:
-#         # Иначе просто печатаем
-#         print(head_preview)
-# else:
-#     print("Готово. Функции предобработки загружены. Для запуска вызовите:")
-#     print("cfg = PreprocConfig(T=36, min_profile_months=12)")
-#     print("out = preprocess_profiles(df, cfg)")
-#     print("panel_long, X = out['panel_long'], out['X']")

@@ -1,7 +1,5 @@
 
 """
-forecast_addon.py — Utilities for prefix→suffix forecasting on well production profiles.
-
 Assumptions:
 - You have a long-format DataFrame `panel_long` with columns: well_name, t (0..T-1), r_oil_s, wc, gor.
 - The preprocessing aligned profiles so t=0 is production start (already done in your PBM Step 1).
