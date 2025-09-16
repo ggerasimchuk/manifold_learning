@@ -47,7 +47,8 @@ class ManifoldConfig:
     n_neighbors: int = 30
     min_dist: float = 0.05
     n_components: int = 2
-    random_state: int = 43
+    random_state: int = 42
+    sample_size = 800
 
 
 def _flatten_series_matrix(X: np.ndarray, channels_idx: Sequence[int]) -> np.ndarray:
@@ -142,7 +143,6 @@ def embed_umap_fastdtw(
     if len(idx) != len(channels):
         missing = [c for c in channels if c not in ch_to_idx]
         raise ValueError(f"В тензоре X нет каналов: {missing}")
-
     # Подвыборка
     all_idx = np.arange(N)
     if sample_size is not None and sample_size < N:
