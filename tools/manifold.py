@@ -428,7 +428,7 @@ def embed_umap_fastdtw(
     # kNN-граф (без self), симметризация
     nn = NearestNeighbors(n_neighbors=k_base, metric="euclidean")
     nn.fit(X_flat)
-    G = nn.kneighbors_graph(X_flat, n_neighbors=k_base, mode="distance", include_self=False)  # CSR
+    G = nn.kneighbors_graph(X_flat, n_neighbors=k_base, mode="distance")  # CSR
     D = G.maximum(G.T).tolil()  # LIL для модификации
     Deuclid = D.tocsr(copy=True)  # (6) сохраним евклидовые длины для диагностики
 
@@ -484,6 +484,18 @@ def embed_umap_fastdtw(
                 med_after = 1.0  # после масштабирования медиана = 1
             else:
                 med_after = float(med) if np.isfinite(med) else None
+    # --- САНИТИЗАЦИЯ МАТРИЦЫ ДИСТАНЦИЙ ДЛЯ UMAP (precomputed) ---
+    D = D.tocsr(copy=True)
+
+    # убрать не-числа/inf (UMAP их не принимает)
+    if D.nnz:
+        m = np.isfinite(D.data) & (D.data >= 0)
+        D.data[~m] = 0.0
+
+    # диагональ строго нулевая и не хранится явно
+    D.setdiag(0.0)
+    D.eliminate_zeros()
+
 
     # UMAP(metric='precomputed') на разреженной матрице расстояний
     model = umap.UMAP(

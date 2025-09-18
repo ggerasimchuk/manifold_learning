@@ -36,7 +36,7 @@ import pandas as pd
 import matplotlib
 matplotlib.use("Agg")  # рендер без GUI
 import matplotlib.pyplot as plt
-from .matrix_utils import _collect_matrix
+from .clustering import _collect_matrix
 
 try:
     from tqdm import tqdm
@@ -148,14 +148,14 @@ def save_cluster_prototype_plots(
             if proto is None:
                 continue
             # Матрица ряда для IQR
-            M = _collect_matrix(panel_long, wells, ch, T)
-            p25 = np.nanpercentile(M, 25, axis=0) if M.size else None
-            p75 = np.nanpercentile(M, 75, axis=0) if M.size else None
+            Xmat, Mmask = _collect_matrix(panel_long, wells, ch, T)
+            p25 = np.nanpercentile(Xmat, 25, axis=0) if Xmat.size else None
+            p75 = np.nanpercentile(Xmat, 75, axis=0) if Xmat.size else None
             x = np.arange(len(proto))
             fig, ax = plt.subplots(figsize=(8, 4))
             ax.set_title(f"Cluster {cl} — {ch}")
             ax.plot(x, proto)
-            if M.size:
+            if Xmat.size:
                 ax.fill_between(x, p25, p75, alpha=0.25)
             ax.set_xlabel("t (months since start)")
             ax.set_ylabel(ch)

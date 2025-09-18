@@ -400,16 +400,21 @@ def _collect_matrix(
 
     pl = panel_long.loc[panel_long["well_name"].isin(wells), ["well_name", "t", channel]].copy()
     pl = pl[(pl["t"] >= 0) & (pl["t"] < T)]
+
     # Кодируем скважины для быстрого присваивания
     cat = pd.Categorical(pl["well_name"], categories=wells, ordered=False)
-    ii = cat.codes.to_numpy()
-    tt = pl["t"].to_numpy()
+    ii = np.asarray(cat.codes, dtype=int)                     # <-- fix
+    tt = pl["t"].to_numpy(dtype=int, copy=False)              # индексы времени
     vals = pd.to_numeric(pl[channel], errors="coerce").to_numpy()
-    m = np.isfinite(vals)
-    ii, tt, vals = ii[m], tt[m], vals[m]
-    X[ii, tt] = vals.astype(np.float32, copy=False)
-    M[ii, tt] = True
+
+    m = np.isfinite(vals) & (ii >= 0) & (tt >= 0) & (tt < T)  # защита от -1 и выхода за границы
+    if m.any():
+        ii, tt, vals = ii[m], tt[m], vals[m]
+        X[ii, tt] = vals.astype(np.float32, copy=False)
+        M[ii, tt] = True
+
     return X, M
+
 
 
 def build_cluster_prototypes(
