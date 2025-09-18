@@ -62,6 +62,71 @@ def _flatten_series_matrix(X: np.ndarray, channels_idx: Sequence[int]) -> np.nda
     return x
 
 
+def transform_prefix_to_Z(
+    umap_model,
+    X_single_prefix: np.ndarray,
+    tensor_channels: Sequence[str],
+    channels: Sequence[str],
+) -> np.ndarray:
+    """Проецирует единичный префикс в пространство уже обученной UMAP.
+
+    ``X_single_prefix`` может быть двумерным массивом ``[T_pref, C]`` (в формате
+    исходного тензора) или уже флеттен-вектором той же длины, что использовалась
+    при обучении. Функция приводит вход к форме ``[1, T*C]`` (с выбором нужных
+    каналов, паддингом нулями и заменой NaN) и вызывает ``umap_model.transform``.
+    Возвращает координаты ``shape == (1, n_components)``.
+    """
+
+    if not channels:
+        raise ValueError("Список каналов для UMAP не должен быть пустым")
+
+    raw_data = getattr(umap_model, "_raw_data", None)
+    if raw_data is None:
+        raise ValueError("UMAP-модель не содержит _raw_data; повторите fit с umap-learn >=0.5")
+
+    expected_dim = int(raw_data.shape[1])
+    n_channels = len(channels)
+    if expected_dim % n_channels != 0:
+        raise ValueError("Размерность обучающей выборки не делится на число каналов")
+    T_total = expected_dim // n_channels
+
+    arr = np.asarray(X_single_prefix, dtype=float)
+    if arr.ndim == 1:
+        if arr.size > expected_dim:
+            raise ValueError("Длина плоского префикса превышает размерность обучающей выборки")
+        flat = np.zeros(expected_dim, dtype=float)
+        flat[: arr.size] = arr
+        return umap_model.transform(flat.reshape(1, -1))
+
+    if arr.ndim != 2:
+        raise ValueError("Ожидается массив формы [T_pref, C] или плоский вектор")
+
+    ch_to_idx = {c: i for i, c in enumerate(tensor_channels)}
+    idx = [ch_to_idx[c] for c in channels if c in ch_to_idx]
+    if len(idx) != len(channels):
+        missing = [c for c in channels if c not in ch_to_idx]
+        raise ValueError(f"В тензоре нет каналов: {missing}")
+
+    T_pref, C_input = arr.shape
+    C_total = len(tensor_channels)
+    X_buf = np.full((1, T_total, C_total), np.nan, dtype=float)
+    T_fill = min(T_pref, T_total)
+
+    if C_input == C_total:
+        X_buf[0, :T_fill, :] = arr[:T_fill, :]
+    elif C_input == len(channels):
+        # предполагаем, что порядок колонок соответствует channels
+        for j, ch in enumerate(channels):
+            X_buf[0, :T_fill, ch_to_idx[ch]] = arr[:T_fill, j]
+    else:
+        raise ValueError(
+            "Число каналов префикса не совпадает ни с tensor_channels, ни с channels"
+        )
+
+    flat = _flatten_series_matrix(X_buf, idx)
+    return umap_model.transform(flat)
+
+
 def embed_umap_euclid(X: np.ndarray, tensor_channels: Sequence[str], channels: Sequence[str],
                       n_neighbors: int = 30, min_dist: float = 0.05, n_components: int = 2,
                       random_state: int = 42) -> Tuple[np.ndarray, umap.UMAP]:

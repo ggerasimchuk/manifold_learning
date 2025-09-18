@@ -111,6 +111,7 @@ def cluster_hdbscan(
         "cluster": labels,
         "prob": probs,
     })
+    df_map["well"] = df_map["well_name"]
 
     # Метрики
     mask = labels >= 0
@@ -127,6 +128,8 @@ def cluster_hdbscan(
     except Exception:
         dbcv = float("nan")
 
+    df_map = assign_anomaly_scores(df_map, Z, labels, lof_k=cfg.lof_neighbors)
+
     return {
         "labels": labels,
         "probabilities": probs,
@@ -135,6 +138,22 @@ def cluster_hdbscan(
         "silhouette": sil,
         "dbcv": dbcv,
     }
+
+
+def approximate_membership(clusterer, Z_new: np.ndarray) -> Dict[str, np.ndarray]:
+    """Аппроксимация кластера и вероятности для новых точек с помощью HDBSCAN."""
+
+    if not hasattr(clusterer, "prediction_data_") or getattr(clusterer, "prediction_data_", None) is None:
+        raise ValueError("clusterer должен быть обучен с prediction_data=True")
+
+    Z_new = np.asarray(Z_new, dtype=float)
+    if Z_new.ndim == 1:
+        Z_new = Z_new.reshape(1, -1)
+    if Z_new.ndim != 2:
+        raise ValueError("Ожидается двумерный массив координат")
+
+    labels, probs = hdbscan.approximate_predict(clusterer, Z_new)
+    return {"labels": labels, "prob": probs}
 
 
 def cluster_gmm_bic(Z: np.ndarray, wells_sub: Sequence[str], n_range: Sequence[int] = range(2, 11)) -> Dict[str, object]:
