@@ -219,7 +219,7 @@ class ManifoldConfig:
     n_components: int = 2
     random_state: int = 42
     # уточнение DTW
-    k_refine: int = 30          # сколько рёбер на вершину пересчитывать DTW
+    k_refine: int = 50          # сколько рёбер на вершину пересчитывать DTW
     fastdtw_radius: int = 1
     weights: Optional[Sequence[float]] = None  # веса каналов в многоканальном DTW
     # подвыборка
@@ -349,6 +349,17 @@ def _fastdtw_multichannel(
 
     dist, _path = fastdtw(A1, B1, radius=radius, dist=_v2v)
     return float(dist)
+
+def pick_grid(Ns, k_min):
+    nn = [max(10, int(round((Ns**0.5)/2))), int(round(Ns**0.5)), min(50, int(round((Ns**0.5)*1.5)))]
+    nn = [n for n in nn if n <= max(2, k_min)]
+    md = [0.05, 0.1, 0.3]
+    return nn, md
+
+def effective(n_neighbors, k_refine, k_min):
+    n_eff = max(2, min(n_neighbors, k_min))
+    k_eff = max(n_eff+1, min(k_refine, max(n_eff+1, k_min)))
+    return n_eff, k_eff
 
 
 # =========================
@@ -497,15 +508,87 @@ def embed_umap_fastdtw(
     D.eliminate_zeros()
 
 
-    # UMAP(metric='precomputed') на разреженной матрице расстояний
-    model = umap.UMAP(
-        n_neighbors=int(cfg.n_neighbors),
-        min_dist=float(cfg.min_dist),
-        n_components=int(cfg.n_components),
-        metric="precomputed",
-        random_state=int(cfg.random_state),
-    )
-    Z = model.fit_transform(D)
+    # --- АВТОТЮНИНГ UMAP: n_neighbors и min_dist под разреженность графа ---
+    row_nnz = np.diff(D.indptr)                 # степень вершины = число ненулевых в строке
+    k_min = int(row_nnz.min()) if row_nnz.size else 0
+    if Ns < 2 or k_min < 2:
+        raise ValueError(f"Недостаточно рёбер для UMAP: Ns={Ns}, k_min={k_min}")
+
+    def _candidate_grid(Ns_: int, k_min_: int, cfg_) -> Tuple[List[int], List[float]]:
+        # три опорные точки вокруг √N + значение из конфигурации
+        base = {
+            max(10, int(round((Ns_ ** 0.5) / 2))),
+            int(round(Ns_ ** 0.5)),
+            min(50, int(round((Ns_ ** 0.5) * 1.5))),
+            int(cfg_.n_neighbors),
+        }
+        nn = sorted({max(2, min(int(b), k_min_)) for b in base if 2 <= b <= k_min_})
+        if not nn:  # аварийный случай очень разреженного графа
+            nn = [max(2, min(int(cfg_.n_neighbors), k_min_))]
+        md = sorted({float(cfg_.min_dist), 0.05, 0.10, 0.30})
+        md = [float(min(0.99, max(0.0, x))) for x in md]
+        return nn, md
+
+    autotune = bool(getattr(cfg, "autotune", True))
+    if autotune:
+        # Счёт: trustworthiness@10 в исходном евклидовом пространстве flatten vs эмбеддинг
+        from sklearn.manifold import trustworthiness  # локальный импорт, чтобы не ломать глобальные зависимости
+
+        nn_cand, md_cand = _candidate_grid(Ns, k_min, cfg)
+        best = None
+        best_pack = None
+        tried = []
+
+        for nn_ in nn_cand:
+            for md_ in md_cand:
+                model_try = umap.UMAP(
+                    n_neighbors=int(nn_),
+                    min_dist=float(md_),
+                    n_components=int(cfg.n_components),
+                    metric="precomputed",
+                    random_state=int(cfg.random_state),
+                )
+                try:
+                    Z_try = model_try.fit_transform(D)
+                    t = float(trustworthiness(X_flat, Z_try, n_neighbors=10))
+                    score = t
+                except Exception:
+                    Z_try, t, score = None, float("nan"), -1.0
+                tried.append((nn_, md_, t))
+                if best is None or score > best:
+                    best = score
+                    best_pack = (model_try, Z_try, nn_, md_)
+
+        # если все попытки провалились — fallback к безопасным значениям
+        if best_pack is None:
+            umap_n = int(max(2, min(int(cfg.n_neighbors), k_min)))
+            umap_md = float(cfg.min_dist)
+            model = umap.UMAP(
+                n_neighbors=umap_n,
+                min_dist=umap_md,
+                n_components=int(cfg.n_components),
+                metric="precomputed",
+                random_state=int(cfg.random_state),
+            )
+            Z = model.fit_transform(D)
+            tried = [(umap_n, umap_md, float("nan"))]
+        else:
+            model, Z, umap_n, umap_md = best_pack
+
+    else:
+        # Без тюнинга: только усечение по k_min
+        umap_n = int(max(2, min(int(cfg.n_neighbors), k_min)))
+        umap_md = float(cfg.min_dist)
+        model = umap.UMAP(
+            n_neighbors=umap_n,
+            min_dist=umap_md,
+            n_components=int(cfg.n_components),
+            metric="precomputed",
+            random_state=int(cfg.random_state),
+        )
+        Z = model.fit_transform(D)
+        tried = [(umap_n, umap_md, None)]
+
 
     # (6) расширенная диагностика
     undirected_edges = int(D.nnz // 2)
@@ -523,6 +606,22 @@ def embed_umap_fastdtw(
         "median_euclid_before": med_before,
         "median_after_norm": med_after,
         "znorm_before_flatten": bool(cfg.znorm_before_flatten),
+        "umap_n_neighbors_requested": int(cfg.n_neighbors),
+        "umap_n_neighbors_effective": int(umap_n),
+        "row_degree_min": int(k_min),
+        "row_degree_median": int(np.median(row_nnz)),
+
     }
+    info.update({
+        "umap_n_neighbors_requested": int(cfg.n_neighbors),
+        "umap_min_dist_requested": float(cfg.min_dist),
+        "umap_n_neighbors_effective": int(umap_n),
+        "umap_min_dist_effective": float(umap_md),
+        "row_degree_min": int(k_min),
+        "row_degree_median": int(np.median(row_nnz)),
+        "autotune": bool(autotune),
+        "autotune_trials": [{"n_neighbors": int(n), "min_dist": float(md), "trust10": (None if (t is None or (isinstance(t,float) and not np.isfinite(t))) else float(t))} for (n, md, t) in tried],
+    })
+
     # (5) возвращаем также модель
     return Z, sub_idx.tolist(), D, info, model
